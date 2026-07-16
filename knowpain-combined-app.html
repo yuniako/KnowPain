@@ -1,0 +1,1430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>KnowPain — Movement Pre-Assessment</title>
+<style>
+  :root {
+    --primary: #9333EA;
+    --secondary: #A855F7;
+    --accent: #C084FC;
+    --dark: #0a0510;
+    --panel: #170f24;
+    --panel-deep: #0d0817;
+    --text-muted: #B8A5D1;
+    --red: #C0392B;
+    --amber: #E8A33D;
+    --green: #4CAF7D;
+  }
+  body {
+    font-family: system-ui, sans-serif;
+    background: var(--dark);
+    color: #fff;
+    margin: 0;
+    padding: 24px;
+  }
+  .wrap { max-width: 1280px; margin: 0 auto; }
+  /* Stages 1-2 don't have the camera alongside them — keep them narrow
+     and centered even though .wrap is now wide, so they don't look
+     stretched out on a big screen. */
+  #stage1 .card, #stage2 .card, #stage3 .card { max-width: 480px; margin: 0 auto; }
+
+  /* Stage 3: camera fixed on the left, everything else scrolls
+     independently on the right, so the live camera feed never scrolls
+     out of view while reading/filling in the rest. */
+  .stage4-layout { display: flex; gap: 20px; align-items: flex-start; }
+  .stage4-left { flex: 2 1 0%; position: sticky; top: 16px; }
+  .stage4-right {
+    flex: 1 1 0%; min-width: 0;
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
+    padding-right: 6px;
+  }
+  /* Below ~900px (tablet/phone) a rigid side-by-side layout stops making
+     sense — fall back to the original single stacked column. */
+  @media (max-width: 900px) {
+    .stage4-layout { display: block; }
+    .stage4-left { position: static; flex: none; }
+    .stage4-right { max-height: none; overflow-y: visible; padding-right: 0; }
+  }
+  header { text-align: center; margin-bottom: 20px; }
+  header h1 { margin-bottom: 4px; font-size: 30px; }
+  header p.tagline { color: var(--accent); font-style: italic; margin: 4px 0; font-size: 14px; }
+  header p.sub { color: var(--text-muted); font-size: 12px; }
+  .disclaimer {
+    background: rgba(232, 163, 61, 0.12);
+    border: 1px solid var(--amber);
+    border-radius: 8px;
+    padding: 13px 16px;
+    font-size: 13px;
+    color: #ffd9a0;
+    margin-bottom: 20px;
+    line-height: 1.5;
+  }
+  .disclaimer strong { color: #ffecc7; }
+  section.card {
+    background: var(--panel);
+    border-radius: 12px;
+    padding: 18px 20px;
+    margin-bottom: 16px;
+  }
+  section.card h2 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--text-muted);
+    margin: 0 0 14px;
+  }
+  #status { color: var(--text-muted); font-size: 12px; margin: 8px 0; }
+  #container {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    border-radius: 10px;
+    overflow: hidden;
+    background: #000;
+  }
+  video, canvas {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    object-fit: cover; transform: scaleX(-1);
+  }
+  #autoCompleteFlash {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 96px; font-weight: 900; color: var(--green);
+    text-shadow: 0 0 24px rgba(76, 175, 125, 0.9);
+    background: rgba(0, 0, 0, 0.25);
+    opacity: 0; pointer-events: none;
+  }
+  #autoCompleteFlash.show { animation: flashCheck 1.1s ease forwards; }
+  @keyframes flashCheck {
+    0% { opacity: 0; transform: scale(0.5); }
+    20% { opacity: 1; transform: scale(1.15); }
+    35% { opacity: 1; transform: scale(1); }
+    75% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+  .stat-row { display: flex; gap: 10px; margin-top: 14px; }
+  .stat { flex: 1; background: var(--panel-deep); border-radius: 8px; padding: 10px; text-align: center; }
+  .stat .label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; }
+  .stat .value { font-size: 15px; font-weight: bold; color: var(--accent); margin-top: 4px; font-family: monospace; }
+
+  label { display: block; font-size: 12px; color: var(--text-muted); margin: 12px 0 4px; }
+  input[type=number], input[type=text], select {
+    width: 100%; box-sizing: border-box; background: var(--panel-deep); color: #fff;
+    border: 1px solid #2a1f3d; padding: 9px 10px; border-radius: 6px; font-size: 13px;
+  }
+  .pain-face-btn {
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    background: var(--panel-deep); border: 2px solid transparent;
+    padding: 8px 4px; min-width: 42px; border-radius: 10px; margin: 0;
+  }
+  .pain-face-btn:hover { border-color: var(--secondary); }
+  .pain-face-btn .emoji { font-size: 22px; line-height: 1; }
+  .pain-face-btn .num { font-size: 10px; color: var(--text-muted); }
+
+  button {
+    background: var(--primary); color: white; border: none; padding: 10px 18px;
+    border-radius: 8px; font-size: 13px; cursor: pointer; margin-top: 12px; margin-right: 8px;
+  }
+  button:disabled { background: #3d3450; cursor: not-allowed; opacity: 0.6; }
+  button.secondary { background: #3d3450; }
+  button.ghost { background: transparent; border: 1px solid #2a1f3d; }
+
+  .checkbox-row { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 10px; font-size: 13px; }
+  .checkbox-row input { margin-top: 3px; }
+  .checkbox-row label { margin: 0; color: #fff; font-size: 13px; }
+
+  .redflag-banner {
+    display: none;
+    background: rgba(192, 57, 43, 0.15);
+    border: 1px solid var(--red);
+    color: #ff9a90;
+    padding: 12px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    margin-top: 12px;
+  }
+  .redflag-banner.show { display: block; }
+
+  #triageResult { font-size: 13px; color: var(--text-muted); line-height: 1.5; }
+  #triageResult .tier { font-size: 16px; font-weight: bold; margin-bottom: 6px; }
+  .tier.ok { color: var(--green); }
+  .tier.soon { color: var(--amber); }
+  .tier.urgent { color: var(--red); }
+
+  details { margin-top: 4px; }
+  summary { cursor: pointer; font-size: 12px; color: var(--text-muted); }
+  pre {
+    background: var(--panel-deep); color: var(--text-muted); padding: 12px; border-radius: 8px;
+    font-size: 11px; overflow-x: auto; margin-top: 10px;
+  }
+
+  /* --- Stage wizard --- */
+  .stage { display: none; }
+  .stage.active { display: block; }
+  .progress {
+    display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-bottom: 20px; font-size: 11px;
+  }
+  .progress-step {
+    padding: 5px 12px; border-radius: 20px; background: var(--panel); color: var(--text-muted);
+  }
+  .progress-step.current { background: var(--primary); color: #fff; font-weight: bold; }
+  .progress-step.done { background: var(--panel-deep); color: var(--accent); }
+  .stage-nav { margin-top: 18px; display: flex; justify-content: space-between; }
+
+  /* --- Body diagram --- */
+  .diagram-caption {
+    font-size: 12px; color: var(--text-muted); text-align: center; margin-bottom: 6px;
+  }
+  #diagramWrap { position: relative; max-width: 280px; margin: 0 auto; }
+  #bodySilhouette { display: block; width: 100%; height: auto; user-select: none; -webkit-user-drag: none; filter: drop-shadow(0 0 18px rgba(192,132,252,0.25)); }
+  #diagramOverlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+  #bodySilhouette path, #bodySilhouette ellipse { cursor: pointer; }
+  #bodySilhouette g[data-region="head"] { cursor: not-allowed; }
+  #painDot { opacity: 0; transition: opacity 0.15s ease; }
+  #painDot.show { opacity: 1; }
+  .side-label-tag {
+    position: absolute; top: 2px; font-size: 11px; font-weight: bold; color: var(--text-muted);
+    letter-spacing: 0.5px; z-index: 2; pointer-events: none;
+  }
+  #selectedAreaLabel {
+    text-align: center; margin-top: 12px; font-size: 14px; color: var(--accent); font-weight: bold; min-height: 20px;
+  }
+  .stage-summary {
+    background: var(--panel-deep); border-radius: 8px; padding: 10px 14px; font-size: 12px;
+    color: var(--text-muted); margin-bottom: 16px;
+  }
+  .stage-summary a { color: var(--accent); cursor: pointer; }
+
+  /* --- Splash screen --- */
+  #splash {
+    position: fixed; inset: 0; background: var(--dark);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1000; transition: opacity 0.6s ease;
+  }
+  #splash.fade-out { opacity: 0; pointer-events: none; }
+  .splash-title {
+    font-size: 44px; font-weight: 800; color: #fff; text-align: center;
+    letter-spacing: 1px; margin: 0;
+    text-shadow: 0 0 30px rgba(192, 132, 252, 0.5);
+  }
+  .splash-tagline {
+    color: var(--accent); font-style: italic; text-align: center; margin-top: 12px;
+    font-size: 15px; opacity: 0; animation: splashFadeUp 0.8s ease 0.35s forwards;
+  }
+  @keyframes splashFadeUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* --- Compact in-app top bar (replaces the old hero header) --- */
+  .topbar {
+    display: flex; align-items: baseline; gap: 10px; justify-content: center;
+    margin-bottom: 16px;
+  }
+  .topbar .app-name { font-size: 17px; font-weight: 800; color: #fff; }
+  .topbar .app-tagline { font-size: 11px; color: var(--text-muted); font-style: italic; }
+  #authBar {
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    font-size: 12px; color: var(--text-muted); margin-bottom: 16px;
+  }
+  #authBar button { margin: 0; padding: 6px 12px; font-size: 12px; }
+
+  /* Print / Save-as-PDF: show ONLY the report, in plain light/dark-agnostic
+     print styling — nobody wants a dark purple theme wasting printer ink,
+     and nobody printing this cares about the camera or buttons. */
+  @media print {
+    body * { visibility: hidden; }
+    #reportCard, #reportCard * { visibility: visible; }
+    #reportCard {
+      position: absolute; top: 0; left: 0; width: 100%;
+      background: #fff; color: #000; border: none; padding: 0;
+    }
+    #reportCard h2, #reportCard button, #copyReportStatus { display: none; }
+    #reportContent { color: #000; font-size: 12pt; }
+  }
+</style>
+</head>
+<body>
+
+<div id="splash">
+  <div>
+    <h1 class="splash-title">KnowPain</h1>
+    <p class="splash-tagline">Know what hurts, before you know who to see.</p>
+  </div>
+</div>
+
+<div class="wrap">
+  <div class="topbar">
+    <span class="app-name">KnowPain</span>
+    <span class="app-tagline">Know what hurts, before you know who to see.</span>
+  </div>
+  <div id="authBar">
+    <span id="authStatus">Profile and history are saved locally on this device.</span>
+  </div>
+
+  <div class="disclaimer">
+    ⚠️ <strong>KnowPain is NOT a medical diagnosis</strong> and <strong>NOT a replacement for a licensed
+    clinician.</strong> If in doubt, always seek in-person care.
+  </div>
+
+  <div class="progress">
+    <div class="progress-step" id="progStep1">1. Where it hurts</div>
+    <div class="progress-step" id="progStep2">2. Describe it</div>
+    <div class="progress-step" id="progStep3">3. Your details</div>
+    <div class="progress-step" id="progStep4">4. Movement test</div>
+  </div>
+
+  <!-- ================= STAGE 1: BODY DIAGRAM ================= -->
+  <div class="stage" id="stage1">
+    <section class="card">
+      <h2>Where does it hurt?</h2>
+      <p class="diagram-caption">
+        Tap anywhere on the body — the diagram faces you, so it shows <strong>your own</strong>
+        right and left, not the mirror image of them.
+      </p>
+      <div id="diagramWrap">
+        <span class="side-label-tag" style="left:2%;">YOUR RIGHT</span>
+        <span class="side-label-tag" style="right:2%;">YOUR LEFT</span>
+        <svg id="bodySilhouette" viewBox="0 0 200 480" role="img" aria-label="Body silhouette, tap where it hurts">
+          <g fill="#0d0a17">
+            <g data-region="head">
+              <ellipse cx="100" cy="35" rx="17" ry="22" />
+              <path d="M 90 52 L 110 52 L 110 66 L 90 66 Z" />
+            </g>
+            <path d="M 60 74 Q 100 62 140 74 C 135 96, 124 118, 120 144 C 118 164, 124 174, 121 190
+                     C 118 208, 109 220, 100 223 C 91 220, 82 208, 79 190 C 76 174, 82 164, 80 144
+                     C 76 118, 65 96, 60 74 Z" />
+            <path d="M 63 78 C 43 100, 26 142, 18 188 C 14 208, 13 222, 17 236 C 20 247, 27 251, 34 248
+                     C 39 245, 40 236, 37 226 C 41 208, 48 182, 58 152 C 66 126, 75 102, 86 82 Z" />
+            <path d="M 137 78 C 157 100, 174 142, 182 188 C 186 208, 187 222, 183 236 C 180 247, 173 251, 166 248
+                     C 161 245, 160 236, 163 226 C 159 208, 152 182, 142 152 C 134 126, 125 102, 114 82 Z" />
+            <path d="M 79 218 C 76 248, 75 292, 77 340 C 78 372, 75 404, 71 436 C 69 448, 71 456, 77 457
+                     L 94 457 C 96 449, 94 438, 95 424 C 97 376, 99 296, 97 232 C 92 226, 84 220, 79 218 Z" />
+            <ellipse cx="83" cy="460" rx="13" ry="6" />
+            <path d="M 121 218 C 124 248, 125 292, 123 340 C 122 372, 125 404, 129 436 C 131 448, 129 456, 123 457
+                     L 106 457 C 104 449, 106 438, 105 424 C 103 376, 101 296, 103 232 C 108 226, 116 220, 121 218 Z" />
+            <ellipse cx="117" cy="460" rx="13" ry="6" />
+          </g>
+        </svg>
+        <svg id="diagramOverlay" viewBox="0 0 100 240" preserveAspectRatio="none">
+          <defs>
+            <radialGradient id="painGlow" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#ff5a4d" stop-opacity="0.9" />
+              <stop offset="55%" stop-color="#ff5a4d" stop-opacity="0.45" />
+              <stop offset="100%" stop-color="#ff5a4d" stop-opacity="0" />
+            </radialGradient>
+          </defs>
+          <circle id="painDot" cx="50" cy="120" r="7" fill="url(#painGlow)" />
+        </svg>
+      </div>
+      <div id="selectedAreaLabel"></div>
+      <div class="stage-nav">
+        <span></span>
+        <button id="stage1NextBtn" disabled>Continue</button>
+      </div>
+    </section>
+  </div>
+
+  <!-- ================= STAGE 2: SYMPTOM DESCRIPTION ================= -->
+  <div class="stage" id="stage2">
+    <section class="card">
+      <h2>Describe what's happening</h2>
+      <p class="diagram-caption" style="text-align:left;">In your own words — when it started, what makes it worse, anything that seems relevant.</p>
+      <textarea id="symptomText" rows="5" placeholder="e.g. it hurts when I reach overhead to throw, started about a week ago"
+        style="width:100%; box-sizing:border-box; background:var(--panel-deep); color:#fff; border:1px solid #2a1f3d; padding:9px 10px; border-radius:6px; font-size:13px; font-family:inherit;"></textarea>
+      <div class="stage-nav">
+        <button id="stage2BackBtn" class="secondary">Back</button>
+        <button id="stage2NextBtn">Continue</button>
+      </div>
+    </section>
+  </div>
+
+  <!-- ================= STAGE 3: YOUR DETAILS (PROFILE) ================= -->
+  <div class="stage" id="stage3">
+    <section class="card">
+      <h2>Your details (context)</h2>
+      <div id="reuseProfileBanner" style="display:none; background:var(--panel-deep); border-radius:8px; padding:12px; margin-bottom:14px;">
+        <div style="font-size:12px; color:var(--text-muted); margin-bottom:8px;">
+          Found info saved from last time on this device — already filled in below.
+        </div>
+        <button id="reuseProfileBtn" style="margin:0;">Use the same info again</button>
+      </div>
+      <label for="ageInput">Age</label>
+      <input type="number" id="ageInput" min="1" max="120" placeholder="e.g. 17" />
+      <label for="genderInput">Gender</label>
+      <select id="genderInput">
+        <option value="unspecified">unspecified</option>
+        <option value="female">female</option>
+        <option value="male">male</option>
+        <option value="other">other</option>
+      </select>
+      <label for="heightInput">Height (cm)</label>
+      <input type="number" id="heightInput" placeholder="e.g. 170" />
+      <label for="weightInput">Weight (kg)</label>
+      <input type="number" id="weightInput" placeholder="e.g. 65" />
+      <label for="occupationInput">Occupation / sport</label>
+      <input type="text" id="occupationInput" placeholder="e.g. student, basketball" />
+      <button id="saveProfileBtn" class="ghost">Save profile</button>
+      <div id="profileStatus" style="font-size:11px; color:var(--text-muted); margin-top:8px;">
+        Your profile saves automatically on this device — click "Save profile" any time to update it now.
+      </div>
+      <div class="stage-nav">
+        <button id="stage3BackBtn" class="secondary">Back</button>
+        <button id="stage3NextBtn">Continue</button>
+      </div>
+    </section>
+  </div>
+
+  <!-- ================= STAGE 4: EVERYTHING THAT ALREADY EXISTED ================= -->
+  <div class="stage" id="stage4">
+    <div class="stage-summary">
+      Testing: <strong id="summaryArea">—</strong> &nbsp;·&nbsp; "<span id="summaryText">—</span>"
+      &nbsp;·&nbsp; <a id="stage4BackLink">change this</a>
+    </div>
+
+    <div class="stage4-layout">
+    <div class="stage4-left">
+    <section class="card">
+      <h2>Camera &amp; live tracking</h2>
+      <p id="status">Loading pose model…</p>
+      <div id="container">
+        <video id="webcam" autoplay playsinline muted></video>
+        <canvas id="output"></canvas>
+        <div id="autoCompleteFlash">✓</div>
+      </div>
+      <button id="startBtn" disabled>Start camera</button>
+      <div class="stat-row">
+        <div class="stat"><div class="label">Current test</div><div class="value" id="statCurrentTest">—</div></div>
+        <div class="stat"><div class="label">Live match</div><div class="value" id="statLiveAngle">—</div></div>
+        <div class="stat"><div class="label">Best match</div><div class="value" id="statBest">—</div></div>
+      </div>
+    </section>
+    </div>
+
+    <div class="stage4-right">
+    <section class="card">
+      <h2>Movement session</h2>
+      <label for="movementSelect">Movement test</label>
+      <select id="movementSelect"><option value="">— complete stages 1-3 first —</option></select>
+
+      <div>
+        <button id="startMoveBtn">Start</button>
+        <button id="stopMoveBtn" class="secondary" disabled>Stop &amp; record</button>
+        <button id="cantAttemptBtn" class="ghost" disabled>Can't attempt — hurts too much</button>
+        <button id="finishSessionBtn" class="ghost" disabled>Finish &amp; get triage</button>
+      </div>
+
+      <div id="painFacePicker" style="display:none;">
+        <div style="font-size:13px; color:var(--accent); font-weight:bold; margin:16px 0 8px; text-align:center;">
+          Nice! How much did that hurt?
+        </div>
+        <div id="painFaceRow" style="display:flex; flex-wrap:wrap; gap:6px; justify-content:center;"></div>
+      </div>
+      <div id="sessionStatus" style="margin-top:10px; font-size:12px; color:var(--text-muted);">
+        Tap "Start camera" above, then "Start" to begin a movement.
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Red-flag screening (deterministic)</h2>
+      <div class="checkbox-row">
+        <input type="checkbox" id="flagNumbness" />
+        <label for="flagNumbness">Numbness, tingling, or loss of feeling</label>
+      </div>
+      <div class="checkbox-row">
+        <input type="checkbox" id="flagCantBear" />
+        <label for="flagCantBear">Cannot bear weight / cannot use the limb</label>
+      </div>
+      <div class="checkbox-row">
+        <input type="checkbox" id="flagSwelling" />
+        <label for="flagSwelling">Severe swelling or visible deformity</label>
+      </div>
+      <div class="checkbox-row">
+        <input type="checkbox" id="flagSeverePain" />
+        <label for="flagSeverePain">Severe unrelenting pain (near 10/10)</label>
+      </div>
+      <div class="redflag-banner" id="redflagBanner">
+        <strong>Seek care now.</strong> A red flag was reported. KnowPain is stopping the
+        self-assessment and routing you to in-person care — decided by fixed rules, not by any AI model.
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Triage result</h2>
+      <div id="triageResult">Finish a session to generate a report.</div>
+    </section>
+
+    <section class="card">
+      <h2>Session history <span style="font-weight:normal; text-transform:none;">(saved locally on this device)</span></h2>
+      <div id="historyList" style="font-size:12px; color:var(--text-muted); line-height:1.6;">Loading…</div>
+    </section>
+
+    <section class="card" id="reportCard" style="display:none;">
+      <h2>Assessment report <span style="font-weight:normal; text-transform:none;">(shareable — bring this to a PT/doctor)</span></h2>
+      <div id="reportContent" style="font-size:13px; line-height:1.7; white-space:pre-wrap;"></div>
+      <div style="margin-top:14px;">
+        <button id="copyReportBtn" class="ghost">Copy report</button>
+        <button id="printReportBtn" class="ghost">Print / Save as PDF</button>
+      </div>
+      <div id="copyReportStatus" style="font-size:11px; color:var(--text-muted); margin-top:6px;"></div>
+    </section>
+
+    <details style="margin-top:8px;">
+      <summary>Show raw data (for the API/developer segment)</summary>
+      <pre id="sessionOutput">// finishSession() output appears here</pre>
+    </details>
+    </div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import {
+    PoseLandmarker,
+    FilesetResolver,
+    DrawingUtils
+  } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
+
+  // ============================================================
+  // LOCAL PERSISTENCE LAYER — profile and injury history saved directly
+  // in this browser's localStorage. No account, no sign-in, no external
+  // service required — works the moment the page loads.
+  //
+  // Trade-off worth knowing: this is tied to THIS device and THIS
+  // browser specifically. Clearing browser data resets it, and it won't
+  // follow someone to a different phone/laptop. That's an accepted
+  // limitation in exchange for zero setup — if cross-device sync is
+  // wanted later, that's what the earlier Firebase Auth + Firestore
+  // version was for.
+  // ============================================================
+  const LOCAL_PROFILE_KEY = "knowpain_profile";
+  const LOCAL_SESSIONS_KEY = "knowpain_local_sessions";
+  const MAX_LOCAL_SESSIONS = 10;
+
+  function loadLocalProfile() {
+    try {
+      const raw = localStorage.getItem(LOCAL_PROFILE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function saveLocalProfile(profile) {
+    localStorage.setItem(LOCAL_PROFILE_KEY, JSON.stringify(profile));
+  }
+
+  function loadLocalSessions() {
+    try {
+      const raw = localStorage.getItem(LOCAL_SESSIONS_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  // Kept as an async function (even though localStorage itself is
+  // synchronous) so the rest of the app didn't need to change shape —
+  // everywhere this is called already expects a Promise.
+  async function saveSessionToDatabase(sessionData) {
+    const sessions = loadLocalSessions();
+    sessions.unshift({ ...sessionData, savedAt: new Date().toISOString() }); // newest first
+    localStorage.setItem(LOCAL_SESSIONS_KEY, JSON.stringify(sessions.slice(0, MAX_LOCAL_SESSIONS)));
+  }
+
+  async function loadPastSessions() {
+    return loadLocalSessions();
+  }
+
+  // Condensed version of past sessions for the AI prompt — just the
+  // shape of past injuries, not every raw field, so the payload stays
+  // small and focused as history grows.
+  async function loadInjuryHistorySummary() {
+    const sessions = loadLocalSessions();
+    return sessions.map((s) => ({
+      when: s.savedAt ? s.savedAt.slice(0, 10) : null,
+      area: s.user?.painArea || null,
+      description: s.user?.symptomDescription || null,
+      worstPain: Math.max(0, ...(s.movements || []).map((m) => m.painScore ?? 0)),
+    }));
+  }
+
+  const statusEl = document.getElementById("status");
+  const startBtn = document.getElementById("startBtn");
+  const video = document.getElementById("webcam");
+  const canvas = document.getElementById("output");
+  const ctx = canvas.getContext("2d");
+  const drawingUtils = new DrawingUtils(ctx);
+
+  const statCurrentTest = document.getElementById("statCurrentTest");
+  const statLiveAngle = document.getElementById("statLiveAngle");
+  const statBest = document.getElementById("statBest");
+
+  let poseLandmarker;
+  let running = false;
+
+  // Landmark indices we care about most for movement testing.
+  // Full list of all 33: https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker
+  const LM = {
+    NOSE: 0,
+    LEFT_SHOULDER: 11, RIGHT_SHOULDER: 12,
+    LEFT_ELBOW: 13, RIGHT_ELBOW: 14,
+    LEFT_WRIST: 15, RIGHT_WRIST: 16,
+    LEFT_HIP: 23, RIGHT_HIP: 24,
+    LEFT_KNEE: 25, RIGHT_KNEE: 26,
+    LEFT_ANKLE: 27, RIGHT_ANKLE: 28,
+    LEFT_HEEL: 29, RIGHT_HEEL: 30,
+    LEFT_FOOT_INDEX: 31, RIGHT_FOOT_INDEX: 32,
+  };
+
+  // Basic joint-angle helper — this is the layer MediaPipe does NOT give you.
+  // Pass three landmarks (a, b, c) and it returns the angle at b, in degrees.
+  function angleBetween(a, b, c) {
+    const ab = { x: a.x - b.x, y: a.y - b.y };
+    const cb = { x: c.x - b.x, y: c.y - b.y };
+    const dot = ab.x * cb.x + ab.y * cb.y;
+    const magAB = Math.hypot(ab.x, ab.y);
+    const magCB = Math.hypot(cb.x, cb.y);
+    const cos = dot / (magAB * magCB);
+    return (Math.acos(Math.min(1, Math.max(-1, cos))) * 180) / Math.PI;
+  }
+
+  // Alternative for only 2 landmarks: angle between the a->b vector and
+  // straight-down vertical. Arm hanging at your side ≈ 0°, raised to
+  // horizontal ≈ 90°, raised overhead ≈ 180°. Used instead of a 3-point
+  // vertex angle specifically so movements like "raise your arm to the
+  // side" don't need a THIRD landmark (like the hip) just to establish a
+  // reference direction — that third point is often out of frame on a
+  // typical webcam/laptop camera even when the arm itself is clearly
+  // visible, which was causing "no usable frames" for no real reason.
+  function angleFromVertical(a, b) {
+    const v = { x: b.x - a.x, y: b.y - a.y };
+    const mag = Math.hypot(v.x, v.y);
+    const cos = v.y / mag; // dot product with (0,1)
+    return (Math.acos(Math.min(1, Math.max(-1, cos))) * 180) / Math.PI;
+  }
+
+  // Picks the right calculation based on how many landmarks a movement
+  // defines — 3 points = vertex angle, 2 points = angle from vertical.
+  function measureAngle(cfg, landmarks) {
+    const pts = cfg.landmarks.map((i) => landmarks[i]);
+    return pts.length === 3 ? angleBetween(pts[0], pts[1], pts[2]) : angleFromVertical(pts[0], pts[1]);
+  }
+
+  // Same goal-aware scoring used for the final result, but callable with
+  // ANY angle — shared so live feedback and the final score can never
+  // drift out of sync with each other.
+  function scoreAngle(cfg, angle) {
+    const [lo, hi] = cfg.targetRange;
+    if (cfg.goal === "min") {
+      return angle <= hi ? 100 : Math.max(0, Math.round(100 - (angle - hi) * 2));
+    }
+    return angle >= lo ? 100 : Math.max(0, Math.round(100 - (lo - angle) * 2));
+  }
+
+  // ============================================================
+  // POSE LIBRARY — static reference data, not a runtime database.
+  // bodyArea keys should match whatever body-diagram region IDs the
+  // interface segment settles on. `keywords` are matched (loosely)
+  // against the user's free-text symptom description to prioritize
+  // which test to ask about first within a body area — deterministic,
+  // no API call needed for this step.
+  // ============================================================
+  const POSE_LIBRARY = {
+    left_shoulder_raise: {
+      bodyArea: "left_shoulder",
+      label: "Raise your left arm straight out to the side",
+      keywords: ["overhead", "reach", "reaching", "raise", "raising", "lift", "lifting", "throw", "throwing"],
+      landmarks: [LM.LEFT_SHOULDER, LM.LEFT_ELBOW],
+      targetRange: [80, 100],
+      goal: "max",
+    },
+    left_elbow_flexion: {
+      bodyArea: "left_elbow",
+      label: "Bend your elbow, bringing your hand toward your shoulder",
+      keywords: ["bend", "bending", "curl", "carry", "carrying", "grip", "gripping", "lift"],
+      landmarks: [LM.LEFT_SHOULDER, LM.LEFT_ELBOW, LM.LEFT_WRIST],
+      targetRange: [30, 60],
+      goal: "min",
+    },
+    left_knee_flexion: {
+      bodyArea: "left_knee",
+      label: "Bend your left knee, like starting a squat",
+      keywords: ["squat", "squatting", "bend", "bending", "stairs", "run", "running", "jump", "jumping"],
+      landmarks: [LM.LEFT_HIP, LM.LEFT_KNEE, LM.LEFT_ANKLE],
+      targetRange: [100, 140],
+      goal: "min",
+    },
+    left_ankle_dorsiflexion: {
+      bodyArea: "left_ankle",
+      label: "Pull your toes up toward your shin",
+      keywords: ["walk", "walking", "step", "stepping", "roll", "rolled", "twist", "twisted", "run", "running"],
+      landmarks: [LM.LEFT_KNEE, LM.LEFT_ANKLE, LM.LEFT_FOOT_INDEX],
+      targetRange: [70, 90],
+      goal: "min",
+    },
+    // Mirrored right-side versions — same logic, RIGHT_* landmarks.
+    right_shoulder_raise: {
+      bodyArea: "right_shoulder",
+      label: "Raise your right arm straight out to the side",
+      keywords: ["overhead", "reach", "reaching", "raise", "raising", "lift", "lifting", "throw", "throwing"],
+      landmarks: [LM.RIGHT_SHOULDER, LM.RIGHT_ELBOW],
+      targetRange: [80, 100],
+      goal: "max",
+    },
+    right_elbow_flexion: {
+      bodyArea: "right_elbow",
+      label: "Bend your right elbow, bringing your hand toward your shoulder",
+      keywords: ["bend", "bending", "curl", "carry", "carrying", "grip", "gripping", "lift"],
+      landmarks: [LM.RIGHT_SHOULDER, LM.RIGHT_ELBOW, LM.RIGHT_WRIST],
+      targetRange: [30, 60],
+      goal: "min",
+    },
+    right_knee_flexion: {
+      bodyArea: "right_knee",
+      label: "Bend your right knee, like starting a squat",
+      keywords: ["squat", "squatting", "bend", "bending", "stairs", "run", "running", "jump", "jumping"],
+      landmarks: [LM.RIGHT_HIP, LM.RIGHT_KNEE, LM.RIGHT_ANKLE],
+      targetRange: [100, 140],
+      goal: "min",
+    },
+    right_ankle_dorsiflexion: {
+      bodyArea: "right_ankle",
+      label: "Pull your right toes up toward your shin",
+      keywords: ["walk", "walking", "step", "stepping", "roll", "rolled", "twist", "twisted", "run", "running"],
+      landmarks: [LM.RIGHT_KNEE, LM.RIGHT_ANKLE, LM.RIGHT_FOOT_INDEX],
+      targetRange: [70, 90],
+      goal: "min",
+    },
+  };
+
+  // Deterministic movement selection: body area is a hard filter (only
+  // tests for that area are ever shown), symptom text only re-orders
+  // within that filtered set by counting keyword matches. This never
+  // pulls in movements from an unrelated body area, even with noisy or
+  // off-topic text — keyword matching only prioritizes, never expands scope.
+  function selectMovementsForSession(bodyArea, symptomText) {
+    const text = (symptomText || "").toLowerCase();
+    const candidates = Object.entries(POSE_LIBRARY).filter(([, cfg]) => cfg.bodyArea === bodyArea);
+    const scored = candidates.map(([key, cfg]) => {
+      const score = (cfg.keywords || []).filter((kw) => text.includes(kw)).length;
+      return { key, cfg, score };
+    });
+    scored.sort((a, b) => b.score - a.score);
+    return scored.map((s) => s.key);
+  }
+
+
+  // ============================================================
+  // MOVEMENT SESSION LAYER — the boundary to the other segments.
+  // ============================================================
+  let currentMovementKey = null;
+  let movementReadings = []; // full raw log, kept for inspection/debugging only
+  let recentReadings = [];
+  let bestSmoothed = null;
+  const sessionResults = [];
+  const SMOOTHING_WINDOW = 8; // ~0.25s at 30fps
+  // True while a completed movement's success checkmark is showing and
+  // we're waiting for the user to tap a pain face — recording is paused
+  // during this window so bestSmoothed can't keep changing underneath them.
+  let awaitingPainRating = false;
+
+  function startMovement(movementKey) {
+    currentMovementKey = movementKey;
+    movementReadings = [];
+    recentReadings = [];
+    bestSmoothed = null;
+  }
+
+  function recordMovementFrame(landmarks) {
+    if (!currentMovementKey || awaitingPainRating) return;
+    const cfg = POSE_LIBRARY[currentMovementKey];
+    const pts = cfg.landmarks.map((i) => landmarks[i]);
+    const MIN_VISIBILITY = 0.5;
+    const clearlyVisible = pts.every((p) => (p.visibility ?? 1) >= MIN_VISIBILITY);
+    if (!clearlyVisible) return;
+
+    const angle = measureAngle(cfg, landmarks);
+    movementReadings.push(angle);
+
+    recentReadings.push(angle);
+    if (recentReadings.length > SMOOTHING_WINDOW) recentReadings.shift();
+    if (recentReadings.length < SMOOTHING_WINDOW) return; // not enough held frames yet to judge
+
+    const rollingAvg = recentReadings.reduce((sum, v) => sum + v, 0) / recentReadings.length;
+    if (bestSmoothed === null) {
+      bestSmoothed = rollingAvg;
+    } else if (cfg.goal === "max") {
+      bestSmoothed = Math.max(bestSmoothed, rollingAvg);
+    } else {
+      bestSmoothed = Math.min(bestSmoothed, rollingAvg);
+    }
+  }
+
+  function stopMovement(painScore) {
+    if (!currentMovementKey || bestSmoothed === null) return null;
+    const cfg = POSE_LIBRARY[currentMovementKey];
+    const best = bestSmoothed;
+    const accuracyPercent = scoreAngle(cfg, best);
+
+    const summary = {
+      movement: currentMovementKey,
+      label: cfg.label,
+      attempted: true,
+      achievedAngleDeg: Math.round(best),
+      targetRangeDeg: cfg.targetRange,
+      accuracyPercent,
+      completedCorrectly: accuracyPercent >= 60,
+      painScore: painScore ?? null,
+    };
+
+    sessionResults.push(summary);
+    currentMovementKey = null;
+    movementReadings = [];
+    return summary;
+  }
+
+  function skipMovement() {
+    if (!currentMovementKey) return null;
+    const cfg = POSE_LIBRARY[currentMovementKey];
+    const summary = {
+      movement: currentMovementKey,
+      label: cfg.label,
+      attempted: false,
+      unableToAttempt: true,
+      achievedAngleDeg: null,
+      accuracyPercent: null,
+      painScore: null,
+    };
+    sessionResults.push(summary);
+    currentMovementKey = null;
+    movementReadings = [];
+    return summary;
+  }
+
+  function finishSession(userProfile) {
+    return { user: userProfile, movements: sessionResults };
+  }
+
+  // Sends the session to YOUR OWN serverless function (never directly to
+  // Google — the API key must stay server-side). Points at /api/triage,
+  // which matches the example function in api/triage.js. Until that
+  // function is deployed, this fails gracefully and the caller shows a
+  // clear fallback message instead of breaking the rest of the app.
+  async function sendSessionToGeminiAPI(sessionData) {
+    const response = await fetch("/api/triage", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(sessionData),
+    });
+    if (!response.ok) {
+      throw new Error(`Triage endpoint returned ${response.status}`);
+    }
+    return response.json(); // { urgencyTier, likelyContributingFactors, summaryForClinician }
+  }
+
+  // ============================================================
+  // Camera / pose model setup
+  // ============================================================
+  async function init() {
+    const vision = await FilesetResolver.forVisionTasks(
+      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
+    );
+    poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
+      baseOptions: {
+        modelAssetPath:
+          "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
+        delegate: "GPU"
+      },
+      runningMode: "VIDEO",
+      numPoses: 1
+    });
+    statusEl.textContent = "Model loaded. Click \u201cStart camera.\u201d";
+    startBtn.disabled = false;
+    hideSplash();
+  }
+
+  async function startCamera() {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+    video.srcObject = stream;
+    await video.play();
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    running = true;
+    statusEl.textContent = "Tracking…";
+    predictLoop();
+  }
+
+  function updateStats(landmarks) {
+    if (!currentMovementKey || !landmarks) {
+      statCurrentTest.textContent = currentMovementKey ? POSE_LIBRARY[currentMovementKey].label : "—";
+      statLiveAngle.textContent = "—";
+      statBest.textContent = bestSmoothed !== null && currentMovementKey
+        ? scoreAngle(POSE_LIBRARY[currentMovementKey], bestSmoothed) + "%" : "—";
+      return;
+    }
+    const cfg = POSE_LIBRARY[currentMovementKey];
+    statCurrentTest.textContent = cfg.label.length > 28 ? cfg.label.slice(0, 26) + "…" : cfg.label;
+    const liveAngle = measureAngle(cfg, landmarks);
+    statLiveAngle.textContent = scoreAngle(cfg, liveAngle) + "%";
+    statBest.textContent = bestSmoothed === null ? "—" : scoreAngle(cfg, bestSmoothed) + "%";
+  }
+
+  const AUTO_COMPLETE_THRESHOLD = 100;
+
+  function predictLoop() {
+    if (!running) return;
+    const result = poseLandmarker.detectForVideo(video, performance.now());
+
+    ctx.save();
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (result.landmarks && result.landmarks.length > 0) {
+      const landmarks = result.landmarks[0];
+      drawingUtils.drawConnectors(landmarks, PoseLandmarker.POSE_CONNECTIONS, {
+        color: "#A855F7", lineWidth: 3
+      });
+      drawingUtils.drawLandmarks(landmarks, { color: "#C084FC", radius: 4 });
+
+      recordMovementFrame(landmarks);
+      updateStats(landmarks);
+
+      // Auto-complete once the held (smoothed) match is convincingly good —
+      // checked AFTER recordMovementFrame so bestSmoothed reflects this
+      // frame. Using the smoothed value (not the raw live angle) means a
+      // single lucky/noisy frame can't trigger it early; the position has
+      // to actually be held for the full averaging window.
+      if (currentMovementKey && bestSmoothed !== null && !awaitingPainRating) {
+        const cfg = POSE_LIBRARY[currentMovementKey];
+        if (scoreAngle(cfg, bestSmoothed) >= AUTO_COMPLETE_THRESHOLD) {
+          pauseForPainRating();
+        }
+      }
+    } else {
+      updateStats(null);
+    }
+
+    ctx.restore();
+    requestAnimationFrame(predictLoop);
+  }
+
+  startBtn.addEventListener("click", async () => {
+    startBtn.disabled = true;
+    statusEl.textContent = "Requesting camera access…";
+    try {
+      await startCamera();
+    } catch (err) {
+      statusEl.textContent = "Camera error: " + err.name + " — " + err.message;
+      console.error(err);
+      startBtn.disabled = false;
+    }
+  });
+
+  init().catch((err) => {
+    statusEl.textContent = "Failed to load model: " + err.message;
+    console.error(err);
+    hideSplash(); // don't leave the user stuck on the splash if loading fails
+  });
+
+  // ============================================================
+  // UI wiring
+  // ============================================================
+  const movementSelect = document.getElementById("movementSelect");
+  const painFacePicker = document.getElementById("painFacePicker");
+  const painFaceRow = document.getElementById("painFaceRow");
+  const startMoveBtn = document.getElementById("startMoveBtn");
+  const stopMoveBtn = document.getElementById("stopMoveBtn");
+  const cantAttemptBtn = document.getElementById("cantAttemptBtn");
+  const finishSessionBtn = document.getElementById("finishSessionBtn");
+  const sessionStatus = document.getElementById("sessionStatus");
+  const sessionOutput = document.getElementById("sessionOutput");
+  const triageResultEl = document.getElementById("triageResult");
+  const redflagBanner = document.getElementById("redflagBanner");
+  const ageInput = document.getElementById("ageInput");
+  const genderInput = document.getElementById("genderInput");
+  const heightInput = document.getElementById("heightInput");
+  const weightInput = document.getElementById("weightInput");
+  const occupationInput = document.getElementById("occupationInput");
+  const symptomText = document.getElementById("symptomText");
+
+  // --- Local profile: loaded immediately, no auth state to wait for ---
+  const profileStatus = document.getElementById("profileStatus");
+  const saveProfileBtn = document.getElementById("saveProfileBtn");
+
+  function collectProfile() {
+    return {
+      age: Number(ageInput.value) || null,
+      gender: genderInput.value,
+      height_cm: Number(heightInput.value) || null,
+      weight_kg: Number(weightInput.value) || null,
+      occupation: occupationInput.value || null,
+    };
+  }
+
+  (function loadSavedProfileIntoForm() {
+    const saved = loadLocalProfile();
+    if (!saved) return;
+    if (saved.age != null) ageInput.value = saved.age;
+    if (saved.gender) genderInput.value = saved.gender;
+    if (saved.height_cm != null) heightInput.value = saved.height_cm;
+    if (saved.weight_kg != null) weightInput.value = saved.weight_kg;
+    if (saved.occupation) occupationInput.value = saved.occupation;
+    profileStatus.textContent = "Profile loaded from this device.";
+  })();
+
+  saveProfileBtn.addEventListener("click", () => {
+    saveLocalProfile(collectProfile());
+    profileStatus.textContent = "Profile saved on this device.";
+  });
+
+  // ============================================================
+  // STAGE WIZARD — three screens shown one at a time, in order.
+  // selectedBodyArea is set by clicking the diagram in stage 1;
+  // symptomText's value is read when leaving stage 2. Neither the
+  // pose-tracking segment above nor the database layer needed any
+  // changes for this — they just receive their inputs from a wizard
+  // now instead of a single page of form fields.
+  // ============================================================
+  let selectedBodyArea = null;
+
+  const stageEls = {
+    1: document.getElementById("stage1"), 2: document.getElementById("stage2"),
+    3: document.getElementById("stage3"), 4: document.getElementById("stage4"),
+  };
+  const progEls = {
+    1: document.getElementById("progStep1"), 2: document.getElementById("progStep2"),
+    3: document.getElementById("progStep3"), 4: document.getElementById("progStep4"),
+  };
+
+  function goToStage(n) {
+    for (const key of [1, 2, 3, 4]) {
+      stageEls[key].classList.toggle("active", key === n);
+      progEls[key].classList.toggle("current", key === n);
+      progEls[key].classList.toggle("done", key < n);
+    }
+    if (n === 3) {
+      // Show the "use the same info again" shortcut only if there's
+      // actually something saved to reuse.
+      document.getElementById("reuseProfileBanner").style.display = loadLocalProfile() ? "block" : "none";
+    }
+    if (n === 4) {
+      document.getElementById("summaryArea").textContent = selectedFineArea.replaceAll("_", " ");
+      document.getElementById("summaryText").textContent = symptomText.value || "(no description given)";
+      loadMovementsForSelection();
+    }
+  }
+
+  // --- Stage 1: body diagram ---
+  // Fine-grained regions (18) — what the user sees and what gets sent as
+  // AI context. Coordinates are % of the image (x: 0=left edge, 100=right;
+  // y: 0=top, 100=bottom), calibrated against the current silhouette —
+  // re-tune if the figure's proportions change again.
+  const AREA_REFERENCE_POINTS = {
+    right_shoulder: { x: 31, y: 16 },
+    left_shoulder: { x: 69, y: 16 },
+    right_upper_arm: { x: 22, y: 25 },
+    left_upper_arm: { x: 78, y: 25 },
+    right_elbow: { x: 9, y: 39 },
+    left_elbow: { x: 91, y: 39 },
+    right_forearm: { x: 9, y: 44 },
+    left_forearm: { x: 91, y: 44 },
+    right_wrist: { x: 9, y: 49 },
+    left_wrist: { x: 91, y: 49 },
+    right_thigh: { x: 39, y: 58 },
+    left_thigh: { x: 61, y: 58 },
+    right_knee: { x: 39, y: 71 },
+    left_knee: { x: 61, y: 71 },
+    right_calf: { x: 40, y: 83 },
+    left_calf: { x: 60, y: 83 },
+    right_ankle: { x: 42, y: 96 },
+    left_ankle: { x: 58, y: 96 },
+  };
+
+  // Only 8 body areas actually have a camera movement test (POSE_LIBRARY).
+  // Every fine-grained region maps down to whichever of those 8 is the
+  // closest usable proxy — e.g. wrist pain still gets tested via the
+  // elbow-flexion movement, since there's no dedicated wrist test.
+  const TESTABLE_AREA_MAP = {
+    right_shoulder: "right_shoulder", right_upper_arm: "right_shoulder",
+    left_shoulder: "left_shoulder", left_upper_arm: "left_shoulder",
+    right_elbow: "right_elbow", right_forearm: "right_elbow", right_wrist: "right_elbow",
+    left_elbow: "left_elbow", left_forearm: "left_elbow", left_wrist: "left_elbow",
+    right_thigh: "right_knee", right_knee: "right_knee",
+    left_thigh: "left_knee", left_knee: "left_knee",
+    right_calf: "right_ankle", right_ankle: "right_ankle",
+    left_calf: "left_ankle", left_ankle: "left_ankle",
+  };
+
+  function nearestBodyArea(x, y) {
+    let closestKey = null;
+    let closestDist = Infinity;
+    for (const [key, pt] of Object.entries(AREA_REFERENCE_POINTS)) {
+      const dist = Math.hypot(pt.x - x, pt.y - y);
+      if (dist < closestDist) {
+        closestDist = dist;
+        closestKey = key;
+      }
+    }
+    return closestKey;
+  }
+
+  const diagramWrap = document.getElementById("diagramWrap");
+  const bodySilhouette = document.getElementById("bodySilhouette");
+  const painDot = document.getElementById("painDot");
+  const selectedAreaLabel = document.getElementById("selectedAreaLabel");
+  const stage1NextBtn = document.getElementById("stage1NextBtn");
+
+  // Exact tap location (% of image), kept alongside the nearest-match —
+  // this is the extra "information fed to the AI" beyond just a category,
+  // e.g. how close to the joint vs. more toward the muscle belly.
+  let selectedPoint = null;
+  // The fine-grained region ("left_forearm") — shown to the user and sent
+  // to the AI. Kept separate from the testable category used to pick
+  // actual movement tests in Stage 3 (see TESTABLE_AREA_MAP above).
+  let selectedFineArea = null;
+
+  bodySilhouette.addEventListener("click", (e) => {
+    // Reject clicks on empty space within the SVG's box — a filled SVG
+    // shape only receives a click on its actual painted area, so hitting
+    // the SVG element itself (not one of its shapes) means the tap missed
+    // the figure entirely.
+    if (e.target === bodySilhouette || e.target.tagName === "svg") {
+      selectedAreaLabel.textContent = "Please tap directly on the body outline.";
+      return;
+    }
+    // Reject the head/neck specifically, even though they're valid shapes.
+    if (e.target.closest('[data-region="head"]')) {
+      selectedAreaLabel.textContent = "Please select a body area below the neck.";
+      return;
+    }
+
+    const rect = diagramWrap.getBoundingClientRect();
+    const xPct = ((e.clientX - rect.left) / rect.width) * 100;
+    const yPct = ((e.clientY - rect.top) / rect.height) * 100;
+
+    painDot.setAttribute("cx", xPct);
+    painDot.setAttribute("cy", yPct * 2.4); // overlay viewBox is 100 x 240, see the SVG markup
+    painDot.classList.add("show");
+
+    selectedPoint = { x: Math.round(xPct), y: Math.round(yPct) };
+    selectedFineArea = nearestBodyArea(xPct, yPct);
+    selectedBodyArea = TESTABLE_AREA_MAP[selectedFineArea];
+    selectedAreaLabel.textContent = `Selected: near your ${selectedFineArea.replaceAll("_", " ")}`;
+    stage1NextBtn.disabled = false;
+  });
+
+  stage1NextBtn.addEventListener("click", () => goToStage(2));
+
+  // --- Stage 2: symptom description ---
+  document.getElementById("stage2BackBtn").addEventListener("click", () => goToStage(1));
+  document.getElementById("stage2NextBtn").addEventListener("click", () => goToStage(3));
+
+  // --- Stage 3: your details (profile) ---
+  document.getElementById("stage3BackBtn").addEventListener("click", () => goToStage(2));
+  document.getElementById("stage3NextBtn").addEventListener("click", () => goToStage(4));
+  // Fields are already pre-filled from localStorage by the time this stage
+  // is reached — "using the same info" just means "don't bother editing,
+  // go straight on" rather than re-loading anything.
+  document.getElementById("reuseProfileBtn").addEventListener("click", () => goToStage(4));
+
+  // --- Stage 4: link back to revise area/description ---
+  document.getElementById("stage4BackLink").addEventListener("click", () => goToStage(1));
+
+  // Fills the movement dropdown with ONLY the tests relevant to the
+  // chosen body area, ordered by how well the free-text description
+  // matches each test's keywords.
+  function loadMovementsForSelection() {
+    const orderedKeys = selectMovementsForSession(selectedBodyArea, symptomText.value);
+    movementSelect.innerHTML = "";
+    if (orderedKeys.length === 0) {
+      const opt = document.createElement("option");
+      opt.textContent = "No movements defined for this area yet";
+      movementSelect.appendChild(opt);
+      return;
+    }
+    for (const key of orderedKeys) {
+      const opt = document.createElement("option");
+      opt.value = key;
+      opt.textContent = POSE_LIBRARY[key].label;
+      movementSelect.appendChild(opt);
+    }
+    sessionStatus.textContent =
+      `Suggested ${orderedKeys.length} test(s) for "${selectedBodyArea.replaceAll("_", " ")}", ` +
+      `ordered by relevance to your description. Pick one, then "Start".`;
+  }
+
+  goToStage(1); // always start at stage 1 on page load
+
+  // --- Splash screen: show the brand moment, then fade into the app.
+  // Tied to actual model-load completion (with a minimum display time so
+  // it never flashes by too fast on a quick connection) rather than a
+  // fixed guess — so the app is always genuinely ready when it appears.
+  const splashEl = document.getElementById("splash");
+  const SPLASH_MIN_MS = 1400;
+  const splashStartedAt = performance.now();
+  let splashHidden = false;
+
+  function hideSplash() {
+    if (splashHidden) return;
+    splashHidden = true;
+    const waitMore = Math.max(0, SPLASH_MIN_MS - (performance.now() - splashStartedAt));
+    setTimeout(() => {
+      splashEl.classList.add("fade-out");
+      setTimeout(() => { splashEl.style.display = "none"; }, 650); // matches CSS transition length
+    }, waitMore);
+  }
+  setTimeout(hideSplash, 8000); // absolute fallback so a stuck network request can never trap the user here
+
+  // Wong-Baker-style pain scale: 1 = happiest/no pain, 10 = worst agony.
+  const PAIN_FACES = [
+    { score: 1, emoji: "😄" }, { score: 2, emoji: "🙂" }, { score: 3, emoji: "😐" },
+    { score: 4, emoji: "😕" }, { score: 5, emoji: "😟" }, { score: 6, emoji: "😣" },
+    { score: 7, emoji: "😖" }, { score: 8, emoji: "😫" }, { score: 9, emoji: "😭" },
+    { score: 10, emoji: "😱" },
+  ];
+  for (const { score, emoji } of PAIN_FACES) {
+    const btn = document.createElement("button");
+    btn.className = "pain-face-btn";
+    btn.innerHTML = `<span class="emoji">${emoji}</span><span class="num">${score}</span>`;
+    btn.addEventListener("click", () => selectPainRating(score));
+    painFaceRow.appendChild(btn);
+  }
+
+  // --- Red-flag screening (deterministic — never touches the LLM) ---
+  const redflagCheckboxes = [
+    document.getElementById("flagNumbness"),
+    document.getElementById("flagCantBear"),
+    document.getElementById("flagSwelling"),
+    document.getElementById("flagSeverePain"),
+  ];
+  let redFlagActive = false;
+
+  function refreshControls() {
+    const movementActive = currentMovementKey !== null;
+    const locked = redFlagActive || awaitingPainRating;
+    startMoveBtn.disabled = locked || movementActive;
+    stopMoveBtn.disabled = locked || !movementActive;
+    cantAttemptBtn.disabled = locked || !movementActive;
+    movementSelect.disabled = locked || movementActive;
+    finishSessionBtn.disabled = locked || sessionResults.length === 0;
+  }
+
+  redflagCheckboxes.forEach((cb) => cb.addEventListener("change", () => {
+    redFlagActive = redflagCheckboxes.some((c) => c.checked);
+    redflagBanner.classList.toggle("show", redFlagActive);
+    if (redFlagActive) {
+      triageResultEl.innerHTML =
+        '<div class="tier urgent">Seek care now</div>A red flag was reported. ' +
+        'This result is decided by fixed rules, not by the AI model.';
+    } else if (sessionResults.length === 0) {
+      triageResultEl.textContent = "Finish a session to generate a report.";
+    }
+    refreshControls();
+  }));
+
+  // --- Movement session controls ---
+  startMoveBtn.addEventListener("click", () => {
+    startMovement(movementSelect.value);
+    sessionStatus.textContent =
+      `Recording: ${POSE_LIBRARY[movementSelect.value].label} — move now, then "Stop & record".`;
+    refreshControls();
+  });
+
+  // Shared by the manual "Stop & record" button AND the auto-complete
+  // trigger in predictLoop, so both paths behave identically. Doesn't
+  // finalize the movement yet — just freezes measurement, shows the
+  // success checkmark, and reveals the pain faces. Actual scoring happens
+  // in selectPainRating() once the user taps one, since bestSmoothed stays
+  // untouched in the meantime (recordMovementFrame is paused).
+  const autoCompleteFlash = document.getElementById("autoCompleteFlash");
+
+  function pauseForPainRating() {
+    if (!currentMovementKey || bestSmoothed === null) {
+      sessionStatus.textContent = "No usable frames were recorded (joints stayed hidden/occluded) — try again.";
+      return;
+    }
+    awaitingPainRating = true;
+    autoCompleteFlash.classList.remove("show");
+    void autoCompleteFlash.offsetWidth; // force reflow so the animation can replay next time
+    autoCompleteFlash.classList.add("show");
+    painFacePicker.style.display = "block";
+    sessionStatus.textContent = "Nice work — now rate how much that hurt.";
+    refreshControls();
+  }
+
+  function selectPainRating(score) {
+    const summary = stopMovement(score);
+    sessionOutput.textContent = JSON.stringify(sessionResults, null, 2);
+    sessionStatus.textContent = summary
+      ? `Recorded "${summary.label}": ${summary.accuracyPercent}% accuracy, pain ${score}/10.`
+      : "No usable frames were recorded — try again.";
+    awaitingPainRating = false;
+    painFacePicker.style.display = "none";
+    refreshControls();
+  }
+
+  stopMoveBtn.addEventListener("click", () => pauseForPainRating());
+
+  cantAttemptBtn.addEventListener("click", () => {
+    const summary = skipMovement();
+    sessionOutput.textContent = JSON.stringify(sessionResults, null, 2);
+    sessionStatus.textContent = summary
+      ? `Marked "${summary.label}" as unable to attempt.`
+      : "No movement in progress.";
+    refreshControls();
+  });
+
+  // Builds a plain-text, human-readable report — this is what gets shown,
+  // copied, and printed. Kept as plain text (not HTML) so "Copy report"
+  // pastes cleanly into a text message, email, or patient-portal form.
+  function buildReportText(sessionData, triage) {
+    const { user, movements } = sessionData;
+    const lines = [];
+    lines.push("KNOWPAIN — ASSESSMENT REPORT");
+    lines.push("Generated: " + new Date().toLocaleString());
+    lines.push("This is a pre-assessment tool, NOT a medical diagnosis.");
+    lines.push("");
+    lines.push("PROFILE");
+    lines.push(`Age: ${user.age ?? "—"} | Gender: ${user.gender ?? "—"} | ` +
+                `Height: ${user.height_cm ?? "—"} cm | Weight: ${user.weight_kg ?? "—"} kg | ` +
+                `Occupation/sport: ${user.occupation ?? "—"}`);
+    lines.push("");
+    lines.push("AREA OF CONCERN");
+    lines.push((user.painArea || "—").replaceAll("_", " "));
+    if (user.symptomDescription) lines.push(`"${user.symptomDescription}"`);
+    lines.push("");
+    lines.push("MOVEMENTS TESTED");
+    if (movements.length === 0) {
+      lines.push("(none recorded)");
+    } else {
+      movements.forEach((m, i) => {
+        if (m.unableToAttempt) {
+          lines.push(`${i + 1}. ${m.label} — unable to attempt (too painful)`);
+        } else {
+          lines.push(`${i + 1}. ${m.label} — ${m.accuracyPercent}% accuracy, pain ${m.painScore}/10`);
+        }
+      });
+    }
+    lines.push("");
+    lines.push("TRIAGE RESULT");
+    if (triage) {
+      lines.push("Urgency: " + (triage.urgencyTier || "—").replaceAll("_", " "));
+      if (triage.summaryForClinician) lines.push(triage.summaryForClinician);
+      if (triage.likelyContributingFactors?.length) {
+        lines.push("Possible contributing factors:");
+        triage.likelyContributingFactors.forEach((f) => lines.push("- " + f));
+      }
+    } else {
+      lines.push("Not available yet (AI reasoning wasn't connected when this was generated).");
+    }
+    lines.push("");
+    lines.push("⚠ KnowPain is NOT a medical diagnosis and NOT a replacement for a licensed");
+    lines.push("clinician. If in doubt, always seek in-person care.");
+    return lines.join("\n");
+  }
+
+  const reportCard = document.getElementById("reportCard");
+  const reportContent = document.getElementById("reportContent");
+  const copyReportBtn = document.getElementById("copyReportBtn");
+  const printReportBtn = document.getElementById("printReportBtn");
+  const copyReportStatus = document.getElementById("copyReportStatus");
+
+  function showAssessmentReport(sessionData, triage) {
+    reportContent.textContent = buildReportText(sessionData, triage);
+    reportCard.style.display = "block";
+  }
+
+  copyReportBtn.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(reportContent.textContent);
+      copyReportStatus.textContent = "Copied to clipboard.";
+    } catch (err) {
+      copyReportStatus.textContent = "Couldn't copy automatically — select the text above and copy manually.";
+    }
+  });
+
+  printReportBtn.addEventListener("click", () => window.print());
+
+  finishSessionBtn.addEventListener("click", async () => {
+    if (redFlagActive) return; // safety net: never proceed past a red flag
+    const userProfile = {
+      ...collectProfile(),
+      painArea: selectedFineArea, // specific region, e.g. "left_forearm" — richer context for the AI
+      testedMovementCategory: selectedBodyArea, // which of the 8 testable areas this routed to
+      painPoint: selectedPoint, // exact tap location, % of image — extra spatial context
+      symptomDescription: symptomText.value || null,
+    };
+
+    // Keep the saved profile current automatically, no extra click needed
+    // beyond finishing a session.
+    saveLocalProfile(collectProfile());
+
+    const injuryHistory = await loadInjuryHistorySummary().catch(() => []);
+    const sessionData = { ...finishSession(userProfile), injuryHistory };
+    sessionOutput.textContent = JSON.stringify(sessionData, null, 2);
+    triageResultEl.innerHTML = `<div class="tier soon">Getting your triage result…</div>`;
+
+    let triageResult = null;
+    try {
+      const triage = await sendSessionToGeminiAPI(sessionData);
+      triageResult = triage;
+      const tierClass = triage.urgencyTier === "seek_care_now" ? "urgent"
+        : triage.urgencyTier === "see_pt_soon" ? "soon" : "ok";
+      const factorsHtml = (triage.likelyContributingFactors || [])
+        .map((f) => `<li>${f}</li>`).join("");
+      triageResultEl.innerHTML =
+        `<div class="tier ${tierClass}">${(triage.urgencyTier || "").replaceAll("_", " ")}</div>` +
+        `<p>${triage.summaryForClinician || ""}</p>` +
+        (factorsHtml ? `<ul>${factorsHtml}</ul>` : "");
+    } catch (err) {
+      // Expected until api/triage.js is actually deployed — the rest of
+      // the app (camera, scoring, database) still works fine without it.
+      triageResultEl.innerHTML =
+        `<div class="tier soon">Session recorded</div>${sessionData.movements.length} movement(s) logged. ` +
+        `Live Gemini reasoning isn't connected yet (${err.message}) — deploy api/triage.js with a ` +
+        `GEMINI_API_KEY to enable it. Full movement data is still in your report below.`;
+      console.error(err);
+    }
+
+    showAssessmentReport(sessionData, triageResult);
+
+    sessionStatus.textContent = "Saving session to this device…";
+    try {
+      await saveSessionToDatabase(sessionData);
+      sessionStatus.textContent = "Session finished and saved locally — see Triage result, history, and JSON below.";
+      renderHistory();
+    } catch (err) {
+      sessionStatus.textContent = "Session finished, but saving locally failed — " + err.message;
+      console.error(err);
+    }
+  });
+
+  const historyListEl = document.getElementById("historyList");
+
+  async function renderHistory() {
+    try {
+      const sessions = await loadPastSessions();
+      if (sessions.length === 0) {
+        historyListEl.textContent = "No past sessions yet.";
+        return;
+      }
+      historyListEl.innerHTML = sessions.map((s) => {
+        const when = s.savedAt ? new Date(s.savedAt).toLocaleString() : "just now";
+        const area = s.user?.painArea ? s.user.painArea.replaceAll("_", " ") : "unknown area";
+        return `<div style="padding:7px 0; border-bottom:1px solid #2a1f3d;">
+          <strong style="color:#fff;">${when}</strong> — ${area}, ${s.movements?.length ?? 0} movement(s) recorded
+        </div>`;
+      }).join("");
+    } catch (err) {
+      historyListEl.textContent = "History unavailable — " + err.message;
+      console.error(err);
+    }
+  }
+  renderHistory(); // synchronous localStorage read, no auth state to wait for
+
+  refreshControls();
+</script>
+</body>
+</html>
