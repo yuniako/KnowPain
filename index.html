@@ -30,6 +30,15 @@
      stretched out on a big screen. */
   #stage1 .card, #stage2 .card, #stage3 .card { max-width: 480px; margin: 0 auto; }
 
+  /* Homepage: history on the left, "start assessment" CTA on the right */
+  .home-layout { display: flex; gap: 20px; align-items: flex-start; }
+  .home-left { flex: 1.2 1 0%; min-width: 0; }
+  .home-right { flex: 1 1 0%; min-width: 0; position: sticky; top: 16px; }
+  @media (max-width: 780px) {
+    .home-layout { display: block; }
+    .home-right { position: static; margin-top: 16px; }
+  }
+
   /* Stage 3: camera fixed on the left, everything else scrolls
      independently on the right, so the live camera feed never scrolls
      out of view while reading/filling in the rest. */
@@ -149,9 +158,6 @@
 
   #triageResult { font-size: 13px; color: var(--text-muted); line-height: 1.5; }
   #triageResult .tier { font-size: 16px; font-weight: bold; margin-bottom: 6px; }
-  .tier.ok { color: var(--green); }
-  .tier.soon { color: var(--amber); }
-  .tier.urgent { color: var(--red); }
 
   details { margin-top: 4px; }
   summary { cursor: pointer; font-size: 12px; color: var(--text-muted); }
@@ -257,7 +263,7 @@
 
 <div class="wrap">
   <div class="topbar">
-    <span class="app-name">KnowPain</span>
+    <span class="app-name" id="homeLink" style="cursor:pointer;" title="Back to home">🏠 KnowPain</span>
     <span class="app-tagline">Know what hurts, before you know who to see.</span>
   </div>
   <div id="authBar">
@@ -269,11 +275,34 @@
     clinician.</strong> If in doubt, always seek in-person care.
   </div>
 
-  <div class="progress">
+  <div class="progress" id="progressBar">
     <div class="progress-step" id="progStep1">1. Where it hurts</div>
     <div class="progress-step" id="progStep2">2. Describe it</div>
     <div class="progress-step" id="progStep3">3. Your details</div>
     <div class="progress-step" id="progStep4">4. Movement test</div>
+  </div>
+
+  <!-- ================= HOMEPAGE ================= -->
+  <div class="stage" id="stageHome">
+    <div class="home-layout">
+      <div class="home-left">
+        <section class="card">
+          <h2>Session history <span style="font-weight:normal; text-transform:none;">(saved locally on this device)</span></h2>
+          <div id="historyList" style="font-size:12px; color:var(--text-muted); line-height:1.6;">Loading…</div>
+          <button id="clearAllHistoryBtn" class="ghost" style="margin-top:10px;">Clear all history</button>
+        </section>
+      </div>
+      <div class="home-right">
+        <section class="card" style="text-align:center;">
+          <h2>New assessment</h2>
+          <p style="font-size:13px; color:var(--text-muted); margin:10px 0 18px;">
+            Tap a body area, describe what's happening, and we'll guide you through a few
+            camera-tracked movements to help figure out what's going on.
+          </p>
+          <button id="startAssessmentBtn" style="font-size:14px; padding:12px 22px;">Start new assessment →</button>
+        </section>
+      </div>
+    </div>
   </div>
 
   <!-- ================= STAGE 1: BODY DIAGRAM ================= -->
@@ -456,11 +485,6 @@
       <div id="triageResult">Finish a session to generate a report.</div>
     </section>
 
-    <section class="card">
-      <h2>Session history <span style="font-weight:normal; text-transform:none;">(saved locally on this device)</span></h2>
-      <div id="historyList" style="font-size:12px; color:var(--text-muted); line-height:1.6;">Loading…</div>
-    </section>
-
     <section class="card" id="reportCard" style="display:none;">
       <h2>Assessment report <span style="font-weight:normal; text-transform:none;">(shareable — bring this to a PT/doctor)</span></h2>
       <div id="reportContent" style="font-size:13px; line-height:1.7; white-space:pre-wrap;"></div>
@@ -530,8 +554,24 @@
   // everywhere this is called already expects a Promise.
   async function saveSessionToDatabase(sessionData) {
     const sessions = loadLocalSessions();
-    sessions.unshift({ ...sessionData, savedAt: new Date().toISOString() }); // newest first
+    sessions.unshift({ ...sessionData, id: crypto.randomUUID(), savedAt: new Date().toISOString() }); // newest first
     localStorage.setItem(LOCAL_SESSIONS_KEY, JSON.stringify(sessions.slice(0, MAX_LOCAL_SESSIONS)));
+  }
+
+  // Deleting is permanent — the confirmation happens in the UI layer
+  // (renderHistory), not here, so this function itself stays simple and
+  // trusts that whoever calls it already got a "yes, really delete" answer.
+  // Uses position in the list rather than the id field, so it works
+  // correctly even for sessions saved before this feature existed (which
+  // don't have an id at all).
+  function deleteLocalSessionAt(index) {
+    const sessions = loadLocalSessions();
+    sessions.splice(index, 1);
+    localStorage.setItem(LOCAL_SESSIONS_KEY, JSON.stringify(sessions));
+  }
+
+  function clearAllLocalSessions() {
+    localStorage.removeItem(LOCAL_SESSIONS_KEY);
   }
 
   async function loadPastSessions() {
@@ -622,6 +662,24 @@
       return angle <= hi ? 100 : Math.max(0, Math.round(100 - (angle - hi) * 2));
     }
     return angle >= lo ? 100 : Math.max(0, Math.round(100 - (lo - angle) * 2));
+  }
+
+  // Shared everywhere an urgency tier gets displayed (Triage result card,
+  // shareable report, history) so the wording and colors can never drift
+  // out of sync between those three places.
+  const URGENCY_LABELS = {
+    seek_care_now: "EMERGENCY",
+    see_pt_soon: "PRIORITY",
+    self_care_ok: "LESS URGENT",
+  };
+  function urgencyLabel(tier) {
+    return URGENCY_LABELS[tier] || (tier || "unknown").replaceAll("_", " ").toUpperCase();
+  }
+  function tierColor(tier) {
+    if (tier === "seek_care_now") return "var(--red)";
+    if (tier === "see_pt_soon") return "var(--amber)";
+    if (tier === "self_care_ok") return "var(--green)";
+    return "var(--text-muted)";
   }
 
   // ============================================================
@@ -990,6 +1048,7 @@
   let selectedBodyArea = null;
 
   const stageEls = {
+    0: document.getElementById("stageHome"),
     1: document.getElementById("stage1"), 2: document.getElementById("stage2"),
     3: document.getElementById("stage3"), 4: document.getElementById("stage4"),
   };
@@ -997,12 +1056,22 @@
     1: document.getElementById("progStep1"), 2: document.getElementById("progStep2"),
     3: document.getElementById("progStep3"), 4: document.getElementById("progStep4"),
   };
+  const progressBarEl = document.getElementById("progressBar");
 
   function goToStage(n) {
-    for (const key of [1, 2, 3, 4]) {
+    for (const key of [0, 1, 2, 3, 4]) {
       stageEls[key].classList.toggle("active", key === n);
+    }
+    for (const key of [1, 2, 3, 4]) {
       progEls[key].classList.toggle("current", key === n);
       progEls[key].classList.toggle("done", key < n);
+    }
+    // The numbered progress bar describes steps WITHIN an assessment —
+    // doesn't make sense to show it on the homepage, which sits outside
+    // that flow.
+    progressBarEl.style.display = n === 0 ? "none" : "flex";
+    if (n === 0) {
+      renderHistory();
     }
     if (n === 3) {
       // Show the "use the same info again" shortcut only if there's
@@ -1155,7 +1224,9 @@
       `ordered by relevance to your description. Pick one, then "Start".`;
   }
 
-  goToStage(1); // always start at stage 1 on page load
+  // goToStage(0) call moved to the very end of the script — see bottom —
+  // since it now triggers renderHistory(), which depends on elements
+  // declared later in this file.
 
   // --- Splash screen: show the brand moment, then fade into the app.
   // Tied to actual model-load completion (with a minimum display time so
@@ -1216,7 +1287,7 @@
     redflagBanner.classList.toggle("show", redFlagActive);
     if (redFlagActive) {
       triageResultEl.innerHTML =
-        '<div class="tier urgent">Seek care now</div>A red flag was reported. ' +
+        '<div class="tier" style="color:var(--red)">EMERGENCY</div>A red flag was reported. ' +
         'This result is decided by fixed rules, not by the AI model.';
     } else if (sessionResults.length === 0) {
       triageResultEl.textContent = "Finish a session to generate a report.";
@@ -1310,7 +1381,7 @@
     lines.push("");
     lines.push("TRIAGE RESULT");
     if (triage) {
-      lines.push("Urgency: " + (triage.urgencyTier || "—").replaceAll("_", " "));
+      lines.push("Urgency: " + urgencyLabel(triage.urgencyTier));
       if (triage.summaryForClinician) lines.push(triage.summaryForClinician);
       if (triage.likelyContributingFactors?.length) {
         lines.push("Possible contributing factors:");
@@ -1364,25 +1435,23 @@
     const injuryHistory = await loadInjuryHistorySummary().catch(() => []);
     const sessionData = { ...finishSession(userProfile), injuryHistory };
     sessionOutput.textContent = JSON.stringify(sessionData, null, 2);
-    triageResultEl.innerHTML = `<div class="tier soon">Getting your triage result…</div>`;
+    triageResultEl.innerHTML = `<div class="tier" style="color:var(--amber)">Getting your triage result…</div>`;
 
     let triageResult = null;
     try {
       const triage = await sendSessionToGeminiAPI(sessionData);
       triageResult = triage;
-      const tierClass = triage.urgencyTier === "seek_care_now" ? "urgent"
-        : triage.urgencyTier === "see_pt_soon" ? "soon" : "ok";
       const factorsHtml = (triage.likelyContributingFactors || [])
         .map((f) => `<li>${f}</li>`).join("");
       triageResultEl.innerHTML =
-        `<div class="tier ${tierClass}">${(triage.urgencyTier || "").replaceAll("_", " ")}</div>` +
+        `<div class="tier" style="color:${tierColor(triage.urgencyTier)}">${urgencyLabel(triage.urgencyTier)}</div>` +
         `<p>${triage.summaryForClinician || ""}</p>` +
         (factorsHtml ? `<ul>${factorsHtml}</ul>` : "");
     } catch (err) {
       // Expected until api/triage.js is actually deployed — the rest of
       // the app (camera, scoring, database) still works fine without it.
       triageResultEl.innerHTML =
-        `<div class="tier soon">Session recorded</div>${sessionData.movements.length} movement(s) logged. ` +
+        `<div class="tier" style="color:var(--amber)">Session recorded</div>${sessionData.movements.length} movement(s) logged. ` +
         `Live Gemini reasoning isn't connected yet (${err.message}) — deploy api/triage.js with a ` +
         `GEMINI_API_KEY to enable it. Full movement data is still in your report below.`;
       console.error(err);
@@ -1404,13 +1473,6 @@
 
   const historyListEl = document.getElementById("historyList");
 
-  function tierColor(tier) {
-    if (tier === "seek_care_now") return "var(--red)";
-    if (tier === "see_pt_soon") return "var(--amber)";
-    if (tier === "self_care_ok") return "var(--green)";
-    return "var(--text-muted)";
-  }
-
   async function renderHistory() {
     try {
       const sessions = await loadPastSessions();
@@ -1418,34 +1480,30 @@
         historyListEl.textContent = "No past sessions yet.";
         return;
       }
-      historyListEl.innerHTML = sessions.map((s) => {
+      historyListEl.innerHTML = sessions.map((s, index) => {
         const when = s.savedAt ? new Date(s.savedAt).toLocaleString() : "just now";
         const area = s.user?.painArea ? s.user.painArea.replaceAll("_", " ") : "unknown area";
-        const desc = s.user?.symptomDescription
-          ? `<div style="font-size:11px; font-style:italic; margin-top:2px;">"${s.user.symptomDescription}"</div>` : "";
-
-        const movementsHtml = (s.movements || []).map((m) => {
-          const detail = m.unableToAttempt
-            ? "unable to attempt (too painful)"
-            : `${m.accuracyPercent}% accuracy, pain ${m.painScore}/10`;
-          return `<li>${m.label} — ${detail}</li>`;
-        }).join("");
-
         const triage = s.triageResult;
-        const triageHtml = triage
-          ? `<div style="margin-top:6px;">
-               <span style="color:${tierColor(triage.urgencyTier)}; font-weight:bold;">
-                 ${(triage.urgencyTier || "").replaceAll("_", " ")}
-               </span>
-               ${triage.summaryForClinician ? " — " + triage.summaryForClinician : ""}
-             </div>`
-          : `<div style="margin-top:6px; font-style:italic;">No AI triage result was recorded for this session.</div>`;
+        const tierBadge = triage
+          ? `<span style="color:${tierColor(triage.urgencyTier)}; font-weight:bold;">${urgencyLabel(triage.urgencyTier)}</span>`
+          : `<span style="font-style:italic;">no AI result</span>`;
 
         return `<div style="padding:10px 0; border-bottom:1px solid #2a1f3d;">
-          <div><strong style="color:#fff;">${when}</strong> — ${area}</div>
-          ${desc}
-          <ul style="margin:6px 0 0; padding-left:18px;">${movementsHtml || "<li>(no movements recorded)</li>"}</ul>
-          ${triageHtml}
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+            <button class="view-session-btn" data-index="${index}"
+              style="background:transparent; border:none; color:#fff; text-align:left; padding:0;
+                     margin:0; cursor:pointer; flex:1; font-size:12px;">
+              <strong>${when}</strong> — ${area} — ${tierBadge}
+              <span style="color:var(--text-muted);"> (tap to view)</span>
+            </button>
+            <button class="delete-session-btn" data-index="${index}"
+              style="margin:0; padding:3px 9px; font-size:10px; flex-shrink:0;
+                     background:transparent; border:1px solid var(--red); color:var(--red); border-radius:6px;">
+              Delete
+            </button>
+          </div>
+          <pre class="session-detail" data-index="${index}" style="display:none; margin-top:8px; white-space:pre-wrap;
+               font-size:11px; background:var(--panel-deep); padding:10px; border-radius:6px;">${buildReportText(s, triage)}</pre>
         </div>`;
       }).join("");
     } catch (err) {
@@ -1455,7 +1513,40 @@
   }
   renderHistory(); // synchronous localStorage read, no auth state to wait for
 
+  // Expand/collapse a session's full detail — separate from the delete
+  // listener below, both attached once via delegation since renderHistory()
+  // rebuilds the list's innerHTML on every call.
+  historyListEl.addEventListener("click", (e) => {
+    const viewBtn = e.target.closest(".view-session-btn");
+    if (!viewBtn) return;
+    const detail = historyListEl.querySelector(`.session-detail[data-index="${viewBtn.dataset.index}"]`);
+    if (detail) detail.style.display = detail.style.display === "none" ? "block" : "none";
+  });
+
+  // Delete-one: event delegation on the container, since renderHistory()
+  // rebuilds its innerHTML every time — attaching this once here (rather
+  // than inside renderHistory) avoids piling up duplicate listeners.
+  historyListEl.addEventListener("click", (e) => {
+    const btn = e.target.closest(".delete-session-btn");
+    if (!btn) return;
+    const index = Number(btn.dataset.index);
+    if (!confirm("Delete this session? This is permanent and can't be undone.")) return;
+    deleteLocalSessionAt(index);
+    renderHistory();
+  });
+
+  // Delete-all
+  document.getElementById("clearAllHistoryBtn").addEventListener("click", () => {
+    if (!confirm("Clear ALL session history on this device? This is permanent and can't be undone.")) return;
+    clearAllLocalSessions();
+    renderHistory();
+  });
+
+  document.getElementById("startAssessmentBtn").addEventListener("click", () => goToStage(1));
+  document.getElementById("homeLink").addEventListener("click", () => goToStage(0));
+
   refreshControls();
+  goToStage(0); // now safe — everything goToStage()/renderHistory() touch is defined above this line
 </script>
 </body>
 </html>
