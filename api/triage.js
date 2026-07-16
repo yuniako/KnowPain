@@ -78,21 +78,17 @@ Session data:
 ${JSON.stringify(sessionData, null, 2)}`;
 
   try {
+    const model = "gemini-3.5-flash";
     const geminiResponse = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/interactions",
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
       {
         method: "POST",
-        headers: {
-          "x-goog-api-key": process.env.GEMINI_API_KEY,
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "gemini-3.5-flash",
-          input: prompt,
-          response_format: {
-            type: "text",
-            mime_type: "application/json",
-            schema,
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            responseMimeType: "application/json",
+            responseSchema: schema,
           },
         }),
       }
@@ -105,7 +101,16 @@ ${JSON.stringify(sessionData, null, 2)}`;
     }
 
     const data = await geminiResponse.json();
-    const result = JSON.parse(data.output_text);
+    // Gemini's actual response nests the generated text here — this is the
+    // well-established, stable shape for generateContent (unlike an earlier
+    // version of this file, which guessed wrong at a newer, less-documented
+    // endpoint's response shape and caused a 500 error).
+    const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!rawText) {
+      res.status(502).json({ error: "Gemini returned no usable content", detail: JSON.stringify(data) });
+      return;
+    }
+    const result = JSON.parse(rawText);
     res.status(200).json(result);
   } catch (err) {
     res.status(500).json({ error: "Triage function error", detail: err.message });
