@@ -115,13 +115,13 @@
     border: 1px solid #2a1f3d; padding: 9px 10px; border-radius: 6px; font-size: 13px;
   }
   .pain-face-btn {
-    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    display: flex; flex-direction: column; align-items: center; gap: 1px;
     background: var(--panel-deep); border: 2px solid transparent;
-    padding: 8px 4px; min-width: 42px; border-radius: 10px; margin: 0;
+    padding: 6px 2px; flex: 1 1 0; min-width: 0; border-radius: 8px; margin: 0;
   }
   .pain-face-btn:hover { border-color: var(--secondary); }
-  .pain-face-btn .emoji { font-size: 22px; line-height: 1; }
-  .pain-face-btn .num { font-size: 10px; color: var(--text-muted); }
+  .pain-face-btn .emoji { font-size: 17px; line-height: 1; }
+  .pain-face-btn .num { font-size: 9px; color: var(--text-muted); }
 
   button {
     background: var(--primary); color: white; border: none; padding: 10px 18px;
@@ -420,7 +420,7 @@
         <div style="font-size:13px; color:var(--accent); font-weight:bold; margin:16px 0 8px; text-align:center;">
           Nice! How much did that hurt?
         </div>
-        <div id="painFaceRow" style="display:flex; flex-wrap:wrap; gap:6px; justify-content:center;"></div>
+        <div id="painFaceRow" style="display:flex; flex-wrap:nowrap; gap:3px;"></div>
       </div>
       <div id="sessionStatus" style="margin-top:10px; font-size:12px; color:var(--text-muted);">
         Tap "Start camera" above, then "Start" to begin a movement.
@@ -1389,6 +1389,7 @@
     }
 
     showAssessmentReport(sessionData, triageResult);
+    sessionData.triageResult = triageResult; // so history can show the actual result, not just what was tested
 
     sessionStatus.textContent = "Saving session to this device…";
     try {
@@ -1403,6 +1404,13 @@
 
   const historyListEl = document.getElementById("historyList");
 
+  function tierColor(tier) {
+    if (tier === "seek_care_now") return "var(--red)";
+    if (tier === "see_pt_soon") return "var(--amber)";
+    if (tier === "self_care_ok") return "var(--green)";
+    return "var(--text-muted)";
+  }
+
   async function renderHistory() {
     try {
       const sessions = await loadPastSessions();
@@ -1413,8 +1421,31 @@
       historyListEl.innerHTML = sessions.map((s) => {
         const when = s.savedAt ? new Date(s.savedAt).toLocaleString() : "just now";
         const area = s.user?.painArea ? s.user.painArea.replaceAll("_", " ") : "unknown area";
-        return `<div style="padding:7px 0; border-bottom:1px solid #2a1f3d;">
-          <strong style="color:#fff;">${when}</strong> — ${area}, ${s.movements?.length ?? 0} movement(s) recorded
+        const desc = s.user?.symptomDescription
+          ? `<div style="font-size:11px; font-style:italic; margin-top:2px;">"${s.user.symptomDescription}"</div>` : "";
+
+        const movementsHtml = (s.movements || []).map((m) => {
+          const detail = m.unableToAttempt
+            ? "unable to attempt (too painful)"
+            : `${m.accuracyPercent}% accuracy, pain ${m.painScore}/10`;
+          return `<li>${m.label} — ${detail}</li>`;
+        }).join("");
+
+        const triage = s.triageResult;
+        const triageHtml = triage
+          ? `<div style="margin-top:6px;">
+               <span style="color:${tierColor(triage.urgencyTier)}; font-weight:bold;">
+                 ${(triage.urgencyTier || "").replaceAll("_", " ")}
+               </span>
+               ${triage.summaryForClinician ? " — " + triage.summaryForClinician : ""}
+             </div>`
+          : `<div style="margin-top:6px; font-style:italic;">No AI triage result was recorded for this session.</div>`;
+
+        return `<div style="padding:10px 0; border-bottom:1px solid #2a1f3d;">
+          <div><strong style="color:#fff;">${when}</strong> — ${area}</div>
+          ${desc}
+          <ul style="margin:6px 0 0; padding-left:18px;">${movementsHtml || "<li>(no movements recorded)</li>"}</ul>
+          ${triageHtml}
         </div>`;
       }).join("");
     } catch (err) {
