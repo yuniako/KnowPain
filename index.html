@@ -226,11 +226,20 @@
 
   /* --- Compact in-app top bar (replaces the old hero header) --- */
   .topbar {
-    display: flex; align-items: baseline; gap: 10px; justify-content: center;
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
     margin-bottom: 16px;
   }
-  .topbar .app-name { font-size: 17px; font-weight: 800; color: #fff; }
-  .topbar .app-tagline { font-size: 11px; color: var(--text-muted); font-style: italic; }
+  .topbar-brand { display: flex; align-items: baseline; gap: 10px; flex: 1; justify-content: center; }
+  .topbar-brand .app-name { font-size: 17px; font-weight: 800; color: #fff; }
+  .topbar-brand .app-tagline { font-size: 11px; color: var(--text-muted); font-style: italic; }
+  .topbar-spacer { width: 76px; flex-shrink: 0; } /* balances .home-btn's width so the brand stays visually centered */
+  .home-btn {
+    background: var(--panel); color: var(--text-muted); border: 1px solid #2a1f3d;
+    padding: 7px 13px; border-radius: 8px; font-size: 12px; cursor: pointer; margin: 0;
+    white-space: nowrap; flex-shrink: 0;
+  }
+  .home-btn:hover { border-color: var(--secondary); color: #fff; }
+  .home-btn:disabled { opacity: 0.4; cursor: default; }
   #authBar {
     display: flex; align-items: center; justify-content: center; gap: 10px;
     font-size: 12px; color: var(--text-muted); margin-bottom: 16px;
@@ -263,8 +272,12 @@
 
 <div class="wrap">
   <div class="topbar">
-    <span class="app-name" id="homeLink" style="cursor:pointer;" title="Back to home">🏠 KnowPain</span>
-    <span class="app-tagline">Know what hurts, before you know who to see.</span>
+    <button id="homeLink" class="home-btn" title="Back to home">🏠 Home</button>
+    <div class="topbar-brand">
+      <span class="app-name">KnowPain</span>
+      <span class="app-tagline">Know what hurts, before you know who to see.</span>
+    </div>
+    <span class="topbar-spacer"></span>
   </div>
   <div id="authBar">
     <span id="authStatus">Profile and history are saved locally on this device.</span>
@@ -1070,6 +1083,7 @@
     // doesn't make sense to show it on the homepage, which sits outside
     // that flow.
     progressBarEl.style.display = n === 0 ? "none" : "flex";
+    document.getElementById("homeLink").disabled = n === 0;
     if (n === 0) {
       renderHistory();
     }
